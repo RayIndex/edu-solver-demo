@@ -5,6 +5,8 @@ import { computeCostUsd, logUsage } from "@/lib/usage";
 export const maxDuration = 120;
 export const runtime = "nodejs";
 
+const HEARTBEAT_INTERVAL_MS = 15_000;
+
 type ReqBody = {
   image?: string;
   mediaType?: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
@@ -108,8 +110,14 @@ export async function POST(req: Request): Promise<Response> {
           encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
         );
       };
+      const sendHeartbeat = () => {
+        controller.enqueue(encoder.encode(": ping\n\n"));
+      };
+      const heartbeat = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
 
       try {
+        sendHeartbeat();
+
         const anthropicStream = anthropic.messages.stream({
           model: MODEL,
           max_tokens: 8192,
@@ -194,6 +202,7 @@ export async function POST(req: Request): Promise<Response> {
         console.error("[solve-stream] error:", err);
         send({ type: "error", message: `调用 Claude 失败: ${message}` });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },
